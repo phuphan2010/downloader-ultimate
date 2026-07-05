@@ -103,5 +103,21 @@ class RedisStore:
 
         return self.memory_keys
 
+    def check_rate_limit(self, identifier: str, limit: int = 10, window_sec: int = 60) -> bool:
+        """Check sliding window rate limit for an identifier (API Key / IP)."""
+        import time
+        r = get_redis_client()
+        if r:
+            try:
+                key = f"ratelimit:{identifier}:{int(time.time() // window_sec)}"
+                current = r.incr(key)
+                if current == 1:
+                    r.expire(key, window_sec)
+                return current <= limit
+            except Exception as e:
+                logger.error("redis_rate_limit_failed", error=str(e))
+                return True
+        return True
+
 
 redis_store = RedisStore()
