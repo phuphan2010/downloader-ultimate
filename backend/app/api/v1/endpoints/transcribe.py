@@ -1,7 +1,8 @@
-"""Transcription API Endpoint."""
+"""Transcription API Endpoint with Auth."""
 from pathlib import Path
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.deps import get_current_api_key
 from app.core.logging import get_logger
 from app.models.download import JobStatus
 from app.models.stt import TranscribeRequest, TranscribeResponse
@@ -15,10 +16,13 @@ router = APIRouter()
 
 
 @router.post("", response_model=TranscribeResponse)
-async def transcribe_job_audio(request: TranscribeRequest):
-    """Extract audio and transcribe video speech to text (generating SRT)."""
+async def transcribe_job_audio(
+    request: TranscribeRequest,
+    api_key: str = Depends(get_current_api_key)
+):
+    """Extract audio and transcribe video speech to text (requires X-API-Key)."""
     job = get_job(request.job_id)
-    if not job:
+    if not job or (job.get("api_key") and job.get("api_key") != api_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{request.job_id}' not found."
@@ -38,18 +42,11 @@ async def transcribe_job_audio(request: TranscribeRequest):
 
     try:
         update_job(request.job_id, status=JobStatus.TRANSCRIBING, progress=30)
-
-        # 1. Extract audio
         await audio_service.extract_audio_wav(video_path, wav_path)
-
-        # 2. Perform STT
         full_text, srt_content, detected_lang = await stt_service.transcribe_audio(
             wav_path, language=request.language
         )
-
-        # 3. Save SRT file
         srt_path.write_text(srt_content, encoding="utf-8")
-
         srt_url = f"/static/{request.job_id}/transcript.srt"
         update_job(request.job_id, status=JobStatus.DONE, progress=100)
 

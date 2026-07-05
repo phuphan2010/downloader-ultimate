@@ -1,7 +1,8 @@
-"""Logo Overlay API Endpoint."""
+"""Logo Overlay API Endpoint with Auth."""
 from typing import Optional
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
+from app.api.deps import get_current_api_key
 from app.core.logging import get_logger
 from app.models.download import JobStatus
 from app.models.logo import LogoOverlayResponse
@@ -21,11 +22,12 @@ async def add_logo_overlay(
     opacity: float = Form(0.8),
     start_time: Optional[float] = Form(None),
     end_time: Optional[float] = Form(None),
-    logo: UploadFile = File(...)
+    logo: UploadFile = File(...),
+    api_key: str = Depends(get_current_api_key)
 ):
-    """Upload logo image and burn watermark onto the video."""
+    """Upload logo image and burn watermark onto the video (requires X-API-Key)."""
     job = get_job(job_id)
-    if not job:
+    if not job or (job.get("api_key") and job.get("api_key") != api_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{job_id}' not found."
@@ -42,7 +44,6 @@ async def add_logo_overlay(
     video_path = downloaded_files[0]
     logo_save_path = job_dir / f"logo_{logo.filename}"
 
-    # Save uploaded logo
     content = await logo.read()
     logo_save_path.write_bytes(content)
 
@@ -57,7 +58,6 @@ async def add_logo_overlay(
 
     try:
         update_job(job_id, status=JobStatus.ADDING_LOGO, progress=85)
-
         await logo_service.overlay_logo(
             video_path,
             logo_save_path,
@@ -68,7 +68,6 @@ async def add_logo_overlay(
             start_time=start_time,
             end_time=end_time
         )
-
         output_url = f"/static/{job_id}/video_with_logo.mp4"
         update_job(job_id, status=JobStatus.DONE, progress=100, output_url=output_url)
 

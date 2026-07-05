@@ -1,6 +1,7 @@
-"""Translation API Endpoint."""
-from fastapi import APIRouter, HTTPException, status
+"""Translation API Endpoint with Auth."""
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.deps import get_current_api_key
 from app.core.logging import get_logger
 from app.models.download import JobStatus
 from app.models.translate import TranslateRequest, TranslateResponse
@@ -13,10 +14,13 @@ router = APIRouter()
 
 
 @router.post("", response_model=TranslateResponse)
-async def translate_transcript(request: TranslateRequest):
-    """Translate transcript SRT file to target language (default: Vietnamese) and generate VTT."""
+async def translate_transcript(
+    request: TranslateRequest,
+    api_key: str = Depends(get_current_api_key)
+):
+    """Translate transcript SRT file to target language (requires X-API-Key)."""
     job = get_job(request.job_id)
-    if not job:
+    if not job or (job.get("api_key") and job.get("api_key") != api_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{request.job_id}' not found."
@@ -44,7 +48,6 @@ async def translate_transcript(request: TranslateRequest):
         out_srt.write_text(trans_srt, encoding="utf-8")
         out_vtt.write_text(trans_vtt, encoding="utf-8")
 
-        # Extract full translated text
         parsed = parse_srt(trans_srt)
         full_text = " ".join([p["text"] for p in parsed])
 

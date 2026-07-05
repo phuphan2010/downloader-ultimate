@@ -1,7 +1,8 @@
-"""Video Download API Endpoint with Celery Offloading (BUG-06 Fix)."""
+"""Video Download API Endpoint with Auth & Celery Offloading."""
 import uuid
-from fastapi import APIRouter, BackgroundTasks, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 
+from app.api.deps import get_current_api_key
 from app.core.logging import get_logger
 from app.models.download import DownloadRequest, DownloadResponse, JobStatus
 from app.services.downloader import validate_and_detect_platform
@@ -13,8 +14,12 @@ router = APIRouter()
 
 
 @router.post("", response_model=DownloadResponse, status_code=status.HTTP_202_ACCEPTED)
-async def request_download(request: DownloadRequest, background_tasks: BackgroundTasks):
-    """Submit a video download request (offloaded to Celery Worker)."""
+async def request_download(
+    request: DownloadRequest,
+    background_tasks: BackgroundTasks,
+    api_key: str = Depends(get_current_api_key)
+):
+    """Submit a video download request (requires X-API-Key)."""
     url_str = str(request.url)
     is_valid, platform = validate_and_detect_platform(url_str)
     if not is_valid:
@@ -24,9 +29,8 @@ async def request_download(request: DownloadRequest, background_tasks: Backgroun
         )
 
     job_id = str(uuid.uuid4())
-    create_job(job_id, platform=platform)
+    create_job(job_id, platform=platform, api_key=api_key)
 
-    # Offload to Celery Worker
     try:
         download_video_task.delay(job_id, url_str, request.quality.value)
     except Exception as e:

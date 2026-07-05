@@ -1,6 +1,7 @@
-"""Subtitle Burn-in API Endpoint."""
-from fastapi import APIRouter, HTTPException, status
+"""Subtitle Burn-in API Endpoint with Auth."""
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.deps import get_current_api_key
 from app.core.logging import get_logger
 from app.models.download import JobStatus
 from app.models.subtitle import SubtitleRequest, SubtitleResponse
@@ -13,10 +14,13 @@ router = APIRouter()
 
 
 @router.post("", response_model=SubtitleResponse)
-async def burn_subtitle_into_video(request: SubtitleRequest):
-    """Hardcode/burn subtitles into the video with customizable styling."""
+async def burn_subtitle_into_video(
+    request: SubtitleRequest,
+    api_key: str = Depends(get_current_api_key)
+):
+    """Hardcode/burn subtitles into the video (requires X-API-Key)."""
     job = get_job(request.job_id)
-    if not job:
+    if not job or (job.get("api_key") and job.get("api_key") != api_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{request.job_id}' not found."
@@ -30,7 +34,6 @@ async def burn_subtitle_into_video(request: SubtitleRequest):
             detail="No input video found for this job."
         )
 
-    # Check translated.srt or fallback transcript.srt
     srt_file = job_dir / "translated_vi.srt"
     if not srt_file.exists():
         srt_file = job_dir / "transcript.srt"
@@ -46,11 +49,9 @@ async def burn_subtitle_into_video(request: SubtitleRequest):
 
     try:
         update_job(request.job_id, status=JobStatus.BURNING_SUBTITLE, progress=70)
-
         await subtitle_burner_service.burn_subtitles(
             video_path, srt_file, output_video_path, style=request.style
         )
-
         output_url = f"/static/{request.job_id}/video_with_subtitle.mp4"
         update_job(request.job_id, status=JobStatus.DONE, progress=100, output_url=output_url)
 

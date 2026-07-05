@@ -1,6 +1,7 @@
-"""Dubbing API Endpoint."""
-from fastapi import APIRouter, HTTPException, status
+"""Dubbing API Endpoint with Auth."""
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.api.deps import get_current_api_key
 from app.core.logging import get_logger
 from app.models.download import JobStatus
 from app.models.dub import DubRequest, DubResponse
@@ -15,10 +16,13 @@ router = APIRouter()
 
 
 @router.post("", response_model=DubResponse)
-async def generate_dubbed_video(request: DubRequest):
-    """Generate TTS audio and mix it with video audio (Vietnamese Dubbing)."""
+async def generate_dubbed_video(
+    request: DubRequest,
+    api_key: str = Depends(get_current_api_key)
+):
+    """Generate TTS audio and mix it with video audio (requires X-API-Key)."""
     job = get_job(request.job_id)
-    if not job:
+    if not job or (job.get("api_key") and job.get("api_key") != api_key):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Job '{request.job_id}' not found."
@@ -49,20 +53,14 @@ async def generate_dubbed_video(request: DubRequest):
     try:
         update_job(request.job_id, status=JobStatus.DUBBING, progress=60)
 
-        # 1. Parse text from SRT
         srt_content = srt_file.read_text(encoding="utf-8")
         parsed = parse_srt(srt_content)
-        full_text = " ".join([item["text"] for item in parsed if item["text"].strip()])
+        full_text = " ".join([item["text"] for item in parsed if item["text"].strip()]) or "Nội dung video."
 
-        if not full_text.strip():
-            full_text = "Nội dung video không có thoại."
-
-        # 2. Generate TTS audio
         await tts_service.generate_segment_tts(
             full_text, tts_audio_path, lang="vi", provider=request.tts_provider
         )
 
-        # 3. Mix audio into video
         await dubbing_service.mix_dubbed_video(
             video_path,
             tts_audio_path,
