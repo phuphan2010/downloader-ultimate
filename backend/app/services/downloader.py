@@ -1,4 +1,4 @@
-"""yt-dlp Service wrapper with temporary writable cookie copy and flexible Douyin API fallback (BUG-22, BUG-17C Fix)."""
+"""yt-dlp Service wrapper with temporary writable cookie copy and Douyin GET JSON API fallback (BUG-22, BUG-17C Fix)."""
 import asyncio
 import re
 import shutil
@@ -89,7 +89,6 @@ class VideoDownloader:
         cookie_file = next((p for p in cookie_candidates if p.exists()), None)
         if cookie_file:
             try:
-                # Create a temporary writable copy for yt-dlp to append Set-Cookies
                 tmp_fd, tmp_name = tempfile.mkstemp(suffix="_cookies.txt")
                 temp_cookie_path = Path(tmp_name)
                 with open(tmp_fd, "wb") as f_out, open(cookie_file, "rb") as f_in:
@@ -148,34 +147,47 @@ class VideoDownloader:
             ydl.download([url])
 
     async def _download_via_douyin_api(self, url: str, job_folder: Path) -> Path:
-        """Fallback method trying flexible endpoints on douyin_tiktok_api service (BUG-17C Fix)."""
+        """Fallback method sending GET request with ?url= query parameter to douyin_tiktok_api service (BUG-17C Fix)."""
         headers = {}
         if settings.DOUYIN_API_KEY:
             headers["X-API-Key"] = settings.DOUYIN_API_KEY
 
         base_url = settings.DOUYIN_API_SERVICE_URL.rstrip('/')
-        candidate_endpoints = [
-            settings.DOUYIN_API_DOWNLOAD_ENDPOINT,
-            "/api/v1/download",
-            "/api/download",
-            "/download",
-            "/api/video/download"
-        ]
 
-        async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as client:
-            last_err = ""
-            for ep in candidate_endpoints:
-                if not ep:
-                    continue
-                endpoint_url = f"{base_url}/{ep.lstrip('/')}"
-                try:
-                    resp = await client.post(endpoint_url, json={"url": url})
-                    if resp.status_code == 200 and len(resp.content) > 1024:
-                        target_file = job_folder / "input_video.mp4"
-                        target_file.write_bytes(resp.content)
-                        return target_file
-                    last_err = f"Endpoint {ep} status {resp.status_code}"
-                except Exception as e:
-                    last_err = f"Endpoint {ep} exception: {str(e)}"
+        async with httpx.AsyncClient(timeout=60.0, headers=headers, follow_redirects=True) as client:
+            logger.info("douyin_api_get_request", base_url=base_url, target_url=url)
+            resp = await client.get(base_url, params={"url": url})
+            if resp.status_code != 200:
+                raise RuntimeError(f"Douyin API service returned HTTP {resp.status_code}: {resp.text[:200]}")
 
-            raise RuntimeError(f"All Douyin API fallback endpoints failed: {last_err}")
+            data = resp.json()
+            logger.info("douyin_api_json_response_received", keys=list(data.keys()) if isinstance(data, dict) else "not_dict")
+
+            # Extract video URL from JSON response dynamically
+            video_url = None
+            if isinstance(data, dict):
+                # Try direct keys
+                for k in ["video_url", "download_url", "url", "nwm_url", "play_addr"]:
+                    if data.get(k) and isinstance(data[k], str) and data[k].startswith("http"):
+                        video_url = data[k]
+                        break
+
+                # Try nested data keys if not found
+                if not video_url and isinstance(data.get("data"), dict):
+                    nested = data["data"]
+                    for k in ["video_url", "download_url", "url", "nwm_url", "play_addr"]:
+                        if nested.get(k) and isinstance(nested[k], str) and nested[k].startswith("http"):
+                            video_url = nested[k]
+                            break
+
+            if not video_url:
+                raise RuntimeError(f"Could not extract video_url from Douyin API JSON response: {data}")
+
+            logger.info("downloading_binary_from_parsed_url", video_url=video_url)
+            video_resp = await client.get(video_url)
+            if video_resp.status_code == 200 and len(video_resp.content) > 1024:
+                target_file = job_folder / "input_video.mp4"
+                target_file.write_bytes(video_resp.content)
+                return target_file
+
+            raise RuntimeError(f"Failed to fetch binary video from parsed URL: status {video_resp.status_code}")

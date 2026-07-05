@@ -89,21 +89,75 @@ if settings.DOUYIN_API_KEY:
 
 ---
 
-### ❌ BUG-17C — STILL OPEN | Endpoint `/api/download` trả HTTP 404
+### ❌ BUG-17C — STILL OPEN | Sai HTTP method, sai endpoint, sai cách parse response
 
 Worker log:
 ```
 [warning] douyin_fallback_failed  error=Douyin API service returned HTTP 404
 ```
 
-`api_auth_proxy` tại `192.168.1.200:8000` không có route `/api/download`. Đã verify ở lần 10: OpenAPI spec của `api_auth_proxy` chỉ có các admin/key management endpoints.
+**Root cause đã xác định (từ owner `api_auth_proxy`):**
 
-**Fix cần làm:**
-PM lead cần xác nhận với owner `api_auth_proxy` đúng endpoint để proxy đến `douyin_tiktok_api`. Sau đó cập nhật:
+API này hoạt động theo cơ chế:
+- **GET** request (không phải POST)
+- URL video truyền qua **query parameter** `?url=<encoded>`
+- Response là **JSON** chứa link video (không phải binary content)
+- Auth qua header `X-API-Key`
+
+Ví dụ cách dùng đúng (Google Apps Script):
+```javascript
+const parserUrl = `${DOUYIN_PARSER_API}?url=${encodeURIComponent(douyinUrl)}`;
+const parserResponse = UrlFetchApp.fetch(parserUrl, {
+    headers: { "X-API-Key": DOUYIN_PARSER_API_KEY }
+});
+```
+
+**Code hiện tại của PM lead sai 3 điểm:**
+
 ```python
-# backend/app/services/downloader.py
-api_endpoint = f"{settings.DOUYIN_API_SERVICE_URL.rstrip('/')}/???/download"
-# Thay ??? bằng đúng path prefix
+# ❌ HIỆN TẠI — 3 lỗi:
+resp = await client.post(                           # ❌ POST → phải là GET
+    f"{settings.DOUYIN_API_SERVICE_URL}/api/download",  # ❌ path /api/download → không tồn tại
+    json={"url": url}                               # ❌ JSON body → phải là query param
+)
+target_file.write_bytes(resp.content)               # ❌ response là JSON, không phải binary
+```
+
+**Fix đúng cho PM lead:**
+
+```python
+async def _download_via_douyin_api(self, url: str, job_folder: Path) -> Path:
+    headers = {}
+    if settings.DOUYIN_API_KEY:
+        headers["X-API-Key"] = settings.DOUYIN_API_KEY
+
+    async with httpx.AsyncClient(timeout=60.0, headers=headers) as client:
+        # Bước 1: GET với url là query param — nhận JSON response
+        resp = await client.get(
+            settings.DOUYIN_API_SERVICE_URL,
+            params={"url": url}
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Douyin API returned HTTP {resp.status_code}")
+
+        data = resp.json()
+        # PM lead cần verify đúng field name trong response JSON
+        # Ví dụ: data["data"]["video_url"] hoặc data["download_url"] — cần test thực tế
+        video_url = data["data"]["video_url"]   # ← xác nhận lại field name
+
+        # Bước 2: Download binary video từ URL nhận được
+        video_resp = await client.get(video_url, follow_redirects=True)
+        target_file = job_folder / "input_video.mp4"
+        target_file.write_bytes(video_resp.content)
+        return target_file
+```
+
+**Bước PM lead cần làm trước khi code:**
+```bash
+# Gọi thử trực tiếp để xem response JSON structure:
+curl -s "http://192.168.1.200:8000?url=https://www.douyin.com/video/7652684072266845450" \
+  -H "X-API-Key: <DOUYIN_API_KEY>" | python3 -m json.tool
+# → Xem field nào chứa video download URL
 ```
 
 ---
@@ -238,7 +292,7 @@ ports:
 
 | Priority | Bug ID | File | Fix | Độ khó | Thời gian |
 |----------|--------|------|-----|--------|-----------|
-| **P0** | **BUG-17C** | `downloader.py` | Xác nhận đúng endpoint `/???/download` với owner `api_auth_proxy`; update code | Trung bình | 15 phút + confirm |
+| **P0** | **BUG-17C** | `downloader.py` | Đổi POST→GET, endpoint→base URL, body→query param `?url=`, parse JSON response lấy video_url rồi mới download binary | Trung bình | 30 phút |
 | **P0** | **BUG-22** | `downloader.py` | Thêm logic copy cookies sang temp file trước khi truyền cho yt-dlp (Option B) | Thấp | 10 phút |
 | **P0** | **BUG-18** | `docker-compose.override.yml` | Thêm `PROXY_URL` hoặc TikTok session cookies | Trung bình | tùy proxy |
 | **P1** | **BUG-23** | `docker-compose.yml` | Đổi host port `8000→8001` tránh conflict | Thấp | 2 phút |
