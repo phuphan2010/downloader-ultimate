@@ -1,0 +1,54 @@
+{
+  "info": {
+    "name": "Downloader Ultimate API",
+    "description": "Postman Collection for TikTok/Douyin Downloader & AI Dubbing REST API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/health",
+          "host": ["{{base_url}}"],
+          "path": ["health"]
+        }
+      }
+    },
+    {
+      "name": "Submit Full Pipeline Job",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-API-Key", "value": "{{api_key}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"url\": \"https://www.tiktok.com/@user/video/123456789\",\n  \"steps\": [\"download\", \"transcribe\", \"translate\", \"subtitle\", \"dub\"],\n  \"options\": {\n    \"quality\": \"best\"\n  }\n}"
+        },
+        "url": {
+          "raw": "{{base_url}}/api/v1/pipeline",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "pipeline"]
+        }
+      }
+    },
+    {
+      "name": "Get Job Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-API-Key", "value": "{{api_key}}" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/v1/jobs/{{job_id}}",
+          "host": ["{{base_url}}"],
+          "path": ["api", "v1", "jobs", "{{job_id}}"]
+        }
+      }
+    }
+  ]
+}
