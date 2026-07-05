@@ -6,6 +6,7 @@ import redis as redis_client
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.logging import get_logger, setup_logging
 from app.core.middleware import RequestIDMiddleware
@@ -32,16 +33,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Routers
+app.include_router(api_router)
+
 
 @app.get("/health", tags=["system"], summary="Health check")
 async def health_check() -> Dict[str, Any]:
-    """Health check endpoint — public, no auth required.
-
-    Checks:
-    - API server: always OK if endpoint responds
-    - Redis: ping test
-    - Disk space: warn if > configured threshold
-    """
+    """Health check endpoint — public, no auth required."""
     health: Dict[str, Any] = {
         "status": "ok",
         "version": "0.1.0",
