@@ -1,12 +1,10 @@
-"""Security module for API key hashing and rate limiting."""
+"""Security module for API key hashing and Redis persistence (BUG-04 & BUG-08 Fix)."""
 import secrets
 from typing import Dict, Optional, Tuple
 import bcrypt
 
 from app.core.config import settings
-
-# In-memory API Keys DB for demo/testing (hashed value -> metadata)
-api_keys_db: Dict[str, Dict] = {}
+from app.services.redis_store import redis_store
 
 
 def generate_api_key() -> Tuple[str, str]:
@@ -21,17 +19,26 @@ def generate_api_key() -> Tuple[str, str]:
     return raw_key, hashed
 
 
+def save_key_to_store(hashed_key: str, key_data: Dict) -> None:
+    redis_store.save_api_key(hashed_key, key_data)
+
+
+def get_all_keys_from_store() -> Dict[str, Dict]:
+    return redis_store.get_all_api_keys()
+
+
 def verify_api_key(raw_key: str) -> bool:
-    """Verify if raw API Key matches any valid key in DB."""
+    """Verify if raw API Key matches any valid key in Redis/Store (BUG-08: No hardcoded backdoor)."""
     if not raw_key:
         return False
 
-    # Development override key for easy testing
-    if settings.APP_ENV == "development" and raw_key == "dev-secret-key-123":
-        return True
-
-    for hashed, metadata in api_keys_db.items():
+    keys_db = get_all_keys_from_store()
+    for hashed, metadata in keys_db.items():
         if metadata.get("is_active", True):
-            if bcrypt.checkpw(raw_key.encode("utf-8"), hashed.encode("utf-8")):
-                return True
+            try:
+                if bcrypt.checkpw(raw_key.encode("utf-8"), hashed.encode("utf-8")):
+                    return True
+            except Exception:
+                continue
+
     return False

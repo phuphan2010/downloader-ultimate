@@ -1,40 +1,49 @@
-"""In-memory job state repository."""
+"""Redis-backed job state repository (BUG-05 Fix)."""
 from datetime import datetime, timezone
 from typing import Dict, Optional, List
-from app.models.download import JobStatus, JobStatusResponse, PlatformType
-
-# Shared in-memory store for API jobs
-jobs_db: Dict[str, Dict] = {}
+from app.models.download import JobStatus, PlatformType
+from app.services.redis_store import redis_store
 
 
-def create_job(job_id: str, platform: PlatformType = PlatformType.UNKNOWN) -> Dict:
+def create_job(job_id: str, platform: PlatformType = PlatformType.UNKNOWN, api_key: Optional[str] = None) -> Dict:
     now = datetime.now(timezone.utc).isoformat()
     job = {
         "job_id": job_id,
-        "status": JobStatus.QUEUED,
+        "status": JobStatus.QUEUED.value,
         "progress": 0,
         "created_at": now,
         "updated_at": now,
         "download_url": None,
         "output_url": None,
         "error": None,
-        "platform": platform,
+        "platform": platform.value,
+        "api_key": api_key,
     }
-    jobs_db[job_id] = job
+    redis_store.save_job(job_id, job)
     return job
 
 
 def update_job(job_id: str, **kwargs) -> Optional[Dict]:
-    if job_id in jobs_db:
-        jobs_db[job_id].update(kwargs)
-        jobs_db[job_id]["updated_at"] = datetime.now(timezone.utc).isoformat()
-        return jobs_db[job_id]
+    job = redis_store.get_job(job_id)
+    if job:
+        # Convert Enum instances to strings for JSON serialization
+        clean_kwargs = {}
+        for k, v in kwargs.items():
+            if hasattr(v, "value"):
+                clean_kwargs[k] = v.value
+            else:
+                clean_kwargs[k] = v
+
+        job.update(clean_kwargs)
+        job["updated_at"] = datetime.now(timezone.utc).isoformat()
+        redis_store.save_job(job_id, job)
+        return job
     return None
 
 
 def get_job(job_id: str) -> Optional[Dict]:
-    return jobs_db.get(job_id)
+    return redis_store.get_job(job_id)
 
 
-def list_jobs() -> List[Dict]:
-    return list(jobs_db.values())
+def list_jobs(api_key: Optional[str] = None) -> List[Dict]:
+    return redis_store.list_jobs(api_key=api_key)
