@@ -1,4 +1,4 @@
-"""Structured JSON logging setup using structlog.
+﻿"""Structured JSON logging setup using structlog.
 
 All logs are emitted as JSON with a consistent schema:
   - timestamp, level, event, logger, request_id, job_id, user_id

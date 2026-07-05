@@ -1,0 +1,75 @@
+version: '3.9'
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: downloader-api
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - job_data:/data/jobs
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: downloader-worker
+    command: celery -A app.workers.celery_app worker --loglevel=info --concurrency=2 -Q default
+    env_file:
+      - .env
+    volumes:
+      - job_data:/data/jobs
+      - ./backend:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: downloader-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: downloader-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  job_data:
+    driver: local
+  redis_data:
+    driver: local

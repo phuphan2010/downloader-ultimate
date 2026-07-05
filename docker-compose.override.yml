@@ -1,0 +1,14 @@
+# Local development overrides — NOT for production
+version: '3.9'
+
+services:
+  api:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    environment:
+      - DEBUG=true
+      - APP_ENV=development
+
+  worker:
+    command: celery -A app.workers.celery_app worker --loglevel=debug --concurrency=1 -Q default
+    environment:
+      - APP_ENV=development
