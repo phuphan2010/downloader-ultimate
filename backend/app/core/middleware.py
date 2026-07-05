@@ -1,4 +1,4 @@
-﻿"""Middleware for attaching request_id to every request context."""
+"""Middleware for attaching request_id to every request context."""
 import time
 import uuid
 from typing import Callable

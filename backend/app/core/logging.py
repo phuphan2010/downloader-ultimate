@@ -1,4 +1,4 @@
-﻿"""Structured JSON logging setup using structlog.
+"""Structured JSON logging setup using structlog.
 
 All logs are emitted as JSON with a consistent schema:
   - timestamp, level, event, logger, request_id, job_id, user_id
@@ -27,12 +27,10 @@ def setup_logging() -> None:
     ]
 
     if settings.DEBUG:
-        # Development: pretty colored output
         processors = shared_processors + [
             structlog.dev.ConsoleRenderer(colors=True),
         ]
     else:
-        # Production: JSON output
         processors = shared_processors + [
             structlog.processors.dict_tracebacks,
             structlog.processors.JSONRenderer(),
@@ -48,7 +46,6 @@ def setup_logging() -> None:
         cache_logger_on_first_use=True,
     )
 
-    # Also configure stdlib logging to go through structlog
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
@@ -57,14 +54,8 @@ def setup_logging() -> None:
 
 
 def get_logger(name: Optional[str] = None) -> structlog.BoundLogger:
-    """Get a bound logger instance with optional name.
-
-    Usage:
-        logger = get_logger(__name__)
-        logger.info("job_started", job_id="abc", user_id="u1")
-    """
+    """Get a bound logger instance with optional name."""
     return structlog.get_logger(name)
 
 
-# Module-level logger for convenience
 logger = get_logger(__name__)
