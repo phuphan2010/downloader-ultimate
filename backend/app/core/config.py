@@ -33,13 +33,14 @@ class Settings(BaseSettings):
     AWS_S3_BUCKET: str = ""
     AWS_REGION: str = "ap-southeast-1"
 
-    # Download
+    # Download & Proxy Configuration
     MAX_VIDEO_SIZE_MB: int = 100
     DOWNLOAD_TIMEOUT_SEC: int = 300
     DOWNLOAD_RETRY_COUNT: int = 3
     COOKIES_FILE: str = "/app/cookies/cookies.txt"
-    PROXY_URL: str = ""  # e.g. "http://proxy.example.com:8080" or "socks5://..."
-    DOUYIN_API_SERVICE_URL: str = "http://localhost:8000"  # Service douyin_tiktok_api proxy
+    PROXY_URL: str = ""  # e.g. "http://proxy.example.com:8080"
+    DOUYIN_API_SERVICE_URL: str = "http://192.168.1.200:8000"  # Host proxy IP or service URL
+    DOUYIN_API_KEY: str = ""  # API key for douyin_tiktok_api proxy
 
     # STT (Whisper)
     WHISPER_MODEL_SIZE: str = "base"  # tiny | base | small | medium | large

@@ -1,7 +1,8 @@
 """Tests for Video Downloader API endpoints and error capture."""
 import pytest
-from app.services.downloader import validate_and_detect_platform
+from app.services.downloader import validate_and_detect_platform, IMPERSONATE_CHROME
 from app.models.download import PlatformType
+from yt_dlp.networking.impersonate import ImpersonateTarget
 
 
 def test_url_validation():
@@ -21,6 +22,11 @@ def test_url_validation():
     ok, plat = validate_and_detect_platform(invalid_url)
     assert ok is False
     assert plat == PlatformType.UNKNOWN
+
+
+def test_impersonate_target_object_type():
+    """Verify IMPERSONATE_CHROME is an ImpersonateTarget instance (BUG-21 Fix)."""
+    assert isinstance(IMPERSONATE_CHROME, ImpersonateTarget)
 
 
 @pytest.mark.asyncio

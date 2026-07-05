@@ -7,8 +7,12 @@ services:
     environment:
       - DEBUG=true
       - APP_ENV=development
+      - DOUYIN_API_SERVICE_URL=${DOUYIN_API_SERVICE_URL:-http://192.168.1.200:8000}
+      - DOUYIN_API_KEY=${DOUYIN_API_KEY:-}
 
   worker:
     command: celery -A app.workers.celery_app worker --loglevel=debug --concurrency=1 -Q default
     environment:
       - APP_ENV=development
+      - DOUYIN_API_SERVICE_URL=${DOUYIN_API_SERVICE_URL:-http://192.168.1.200:8000}
+      - DOUYIN_API_KEY=${DOUYIN_API_KEY:-}

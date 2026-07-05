@@ -1,4 +1,4 @@
-"""yt-dlp Service wrapper with TikTok & Douyin no-watermark support, proxy, and robust error logging (BUG-17, BUG-18, BUG-20 Fix)."""
+"""yt-dlp Service wrapper with ImpersonateTarget object fix and Douyin API fallback (BUG-21, BUG-17 Fix)."""
 import asyncio
 import re
 import shutil
@@ -12,6 +12,13 @@ from app.core.logging import get_logger
 from app.models.download import PlatformType, VideoQuality
 
 logger = get_logger(__name__)
+
+# Try importing ImpersonateTarget for yt-dlp Python API (BUG-21 Fix)
+try:
+    from yt_dlp.networking.impersonate import ImpersonateTarget
+    IMPERSONATE_CHROME = ImpersonateTarget("chrome")
+except Exception:
+    IMPERSONATE_CHROME = "chrome"
 
 TIKTOK_REGEX = re.compile(r"https?://(?:www\.|vm\.|vt\.)?tiktok\.com/.*")
 DOUYIN_REGEX = re.compile(r"https?://(?:www\.|v\.)?douyin\.com/.*|https?://v\.douyin\.com/.*")
@@ -57,7 +64,7 @@ class VideoDownloader:
             "quiet": False,
             "no_warnings": False,
             "ignoreerrors": False,
-            "impersonate": "chrome",
+            "impersonate": IMPERSONATE_CHROME,  # ImpersonateTarget object (BUG-21 Fix)
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "http_headers": {
                 "Referer": "https://www.douyin.com/" if platform == PlatformType.DOUYIN else "https://www.tiktok.com/"
@@ -128,7 +135,11 @@ class VideoDownloader:
 
     async def _download_via_douyin_api(self, url: str, job_folder: Path) -> Path:
         """Fallback method to download Douyin video via douyin_tiktok_api service."""
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        headers = {}
+        if settings.DOUYIN_API_KEY:
+            headers["X-API-Key"] = settings.DOUYIN_API_KEY
+
+        async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
             api_endpoint = f"{settings.DOUYIN_API_SERVICE_URL.rstrip('/')}/api/download"
             resp = await client.post(api_endpoint, json={"url": url})
             if resp.status_code == 200:
