@@ -56,6 +56,7 @@ class VideoDownloader:
             "quiet": not settings.DEBUG,
             "no_warnings": True,
             "ignoreerrors": False,
+            "impersonate": "chrome",
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "http_headers": {
                 "Referer": "https://www.douyin.com/" if platform == PlatformType.DOUYIN else "https://www.tiktok.com/"

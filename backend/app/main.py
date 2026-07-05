@@ -36,6 +36,22 @@ app.add_middleware(
 # Routers
 app.include_router(api_router)
 
+# Web UI & Static Files (BUG-19 Fix)
+import os
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse, RedirectResponse
+
+static_path = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.exists(static_path):
+    app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+@app.get("/", tags=["ui"], summary="Web UI Home")
+async def serve_ui():
+    index_file = os.path.join(static_path, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return RedirectResponse(url="/docs")
+
 
 @app.get("/health", tags=["system"], summary="Health check")
 async def health_check() -> Dict[str, Any]:

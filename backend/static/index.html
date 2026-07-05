@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Downloader Ultimate — Video Downloader & Dubbing Tool</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Outfit', sans-serif; }
+    .glass-card {
+      background: rgba(15, 23, 42, 0.75);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+    }
+    .btn-gradient {
+      background: linear-gradient(135deg, #6366f1 0%, #ec4899 100%);
+    }
+    .btn-gradient:hover {
+      opacity: 0.95;
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <div class="max-w-6xl mx-auto px-4 py-8">
+    <!-- Header -->
+    <header class="flex flex-col sm:flex-row justify-between items-center mb-10 pb-4 border-b border-slate-800 gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl btn-gradient flex items-center justify-center font-bold text-xl text-white shadow-lg">
+          ⚡
+        </div>
+        <div>
+          <h1 class="text-2xl font-bold text-white tracking-tight">Downloader Ultimate</h1>
+          <p class="text-xs text-slate-400">TikTok & Douyin Video Processing & AI Dubbing Engine</p>
+        </div>
+      </div>
+
+      <nav class="flex gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+        <button id="nav-pipeline" onclick="switchTab('pipeline')" class="px-4 py-2 rounded-lg text-sm font-medium transition-all bg-indigo-600 text-white shadow-md">
+          Pipeline
+        </button>
+        <button id="nav-admin" onclick="switchTab('admin')" class="px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+          API Keys
+        </button>
+        <a href="/docs" target="_blank" class="px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800">
+          Swagger API Docs ↗
+        </a>
+      </nav>
+    </header>
+
+    <!-- Main Content -->
+    <main>
+      <!-- Pipeline Tab -->
+      <div id="tab-pipeline" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Form Column -->
+        <div class="lg:col-span-2 space-y-6">
+          <div class="glass-card rounded-2xl p-6">
+            <h2 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <span>🎬</span> Configure Video Pipeline
+            </h2>
+
+            <form id="pipeline-form" onsubmit="handleStartPipeline(event)" class="space-y-5">
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  TikTok / Douyin Video URL
+                </label>
+                <input
+                  type="url"
+                  id="video-url"
+                  placeholder="https://www.tiktok.com/@user/video/..."
+                  required
+                  class="w-full bg-slate-900/80 border border-slate-700/60 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition text-sm"
+                />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  X-API-Key (Optional if not required by backend)
+                </label>
+                <input
+                  type="text"
+                  id="api-key-input"
+                  placeholder="dt_..."
+                  class="w-full bg-slate-900/80 border border-slate-700/60 rounded-xl px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition text-xs font-mono"
+                />
+              </div>
+
+              <!-- Processing Steps Selection -->
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3">
+                  Select Processing Steps
+                </label>
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3" id="step-buttons">
+                  <!-- Steps injected via JS -->
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                id="submit-btn"
+                class="w-full btn-gradient py-3.5 rounded-xl text-white font-semibold shadow-lg transition disabled:opacity-50"
+              >
+                🚀 Start Full Pipeline
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- Realtime Monitor Column -->
+        <div class="space-y-6">
+          <div class="glass-card rounded-2xl p-6">
+            <h3 class="text-md font-semibold text-white mb-4">Live Processing Monitor</h3>
+
+            <div id="status-container" class="space-y-4">
+              <div class="text-center py-8 text-slate-500 text-xs">
+                No active job. Submit URL above to start processing.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab -->
+      <div id="tab-admin" class="glass-card rounded-2xl p-6 space-y-6 hidden">
+        <h2 class="text-lg font-semibold text-white">API Key Management</h2>
+
+        <div class="flex gap-3 max-w-md">
+          <input
+            type="text"
+            id="key-name-input"
+            placeholder="Key Name (e.g. n8n Production)"
+            class="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-indigo-500"
+          />
+          <button
+            onclick="handleCreateApiKey()"
+            class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded-xl text-sm font-semibold text-white transition"
+          >
+            Create Key
+          </button>
+        </div>
+
+        <div id="created-key-box" class="hidden p-4 bg-emerald-950/60 border border-emerald-800 rounded-xl text-xs text-emerald-300">
+          Created API Key: <code id="created-key-val" class="font-bold font-mono"></code>
+        </div>
+
+        <div id="keys-list" class="divide-y divide-slate-800">
+          <div class="py-4 text-xs text-slate-500">Loading keys...</div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const availableSteps = [
+      { id: 'download', label: '⬇️ Download', active: true },
+      { id: 'transcribe', label: '🎙️ STT (Whisper)', active: true },
+      { id: 'translate', label: '🌐 Translate (VI)', active: true },
+      { id: 'subtitle', label: '💬 Burn Subtitle', active: true },
+      { id: 'dub', label: '🗣️ AI Dubbing', active: true },
+      { id: 'logo', label: '🖼️ Watermark Logo', active: false },
+    ];
+
+    let currentJobId = null;
+    let pollInterval = null;
+
+    function renderSteps() {
+      const container = document.getElementById('step-buttons');
+      container.innerHTML = availableSteps.map(step => `
+        <button
+          type="button"
+          onclick="toggleStep('${step.id}')"
+          class="px-3 py-2.5 rounded-xl border text-xs font-medium transition text-left flex items-center justify-between ${
+            step.active
+              ? 'bg-indigo-600/20 border-indigo-500 text-indigo-200'
+              : 'bg-slate-900/50 border-slate-800 text-slate-400 hover:border-slate-700'
+          }"
+        >
+          <span>${step.label}</span>
+          ${step.active ? '<span class="text-indigo-400">✓</span>' : ''}
+        </button>
+      `).join('');
+    }
+
+    function toggleStep(id) {
+      const step = availableSteps.find(s => s.id === id);
+      if (step) step.active = !step.active;
+      renderSteps();
+    }
+
+    function switchTab(tab) {
+      document.getElementById('tab-pipeline').classList.toggle('hidden', tab !== 'pipeline');
+      document.getElementById('tab-admin').classList.toggle('hidden', tab !== 'admin');
+
+      document.getElementById('nav-pipeline').className = tab === 'pipeline'
+        ? 'px-4 py-2 rounded-lg text-sm font-medium transition-all bg-indigo-600 text-white shadow-md'
+        : 'px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800';
+
+      document.getElementById('nav-admin').className = tab === 'admin'
+        ? 'px-4 py-2 rounded-lg text-sm font-medium transition-all bg-indigo-600 text-white shadow-md'
+        : 'px-4 py-2 rounded-lg text-sm font-medium transition-all text-slate-400 hover:text-white hover:bg-slate-800';
+
+      if (tab === 'admin') fetchApiKeys();
+    }
+
+    async function handleStartPipeline(e) {
+      e.preventDefault();
+      const url = document.getElementById('video-url').value;
+      const apiKey = document.getElementById('api-key-input').value;
+      const selected = availableSteps.filter(s => s.active).map(s => s.id);
+
+      const headers = { 'Content-Type': 'application/json' };
+      if (apiKey) headers['X-API-Key'] = apiKey;
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+      submitBtn.innerText = 'Submitting Request...';
+
+      try {
+        const res = await fetch('/api/v1/pipeline', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            url,
+            steps: selected,
+            options: {
+              quality: 'best',
+              subtitle_style: { position: 'bottom' },
+              dub: { voice: 'female', mix_mode: 'overlay' }
+            }
+          })
+        });
+        const data = await res.json();
+        if (data.job_id) {
+          currentJobId = data.job_id;
+          startPolling(apiKey);
+        } else {
+          alert('Error starting job: ' + (data.detail || JSON.stringify(data)));
+          submitBtn.disabled = false;
+          submitBtn.innerText = '🚀 Start Full Pipeline';
+        }
+      } catch (err) {
+        alert('Failed to connect to API: ' + err.message);
+        submitBtn.disabled = false;
+        submitBtn.innerText = '🚀 Start Full Pipeline';
+      }
+    }
+
+    function startPolling(apiKey) {
+      if (pollInterval) clearInterval(pollInterval);
+
+      const updateStatus = async () => {
+        const headers = {};
+        if (apiKey) headers['X-API-Key'] = apiKey;
+
+        try {
+          const res = await fetch('/api/v1/jobs/' + currentJobId, { headers });
+          const job = await res.json();
+          const container = document.getElementById('status-container');
+
+          const isDone = job.status === 'done';
+          const isFailed = job.status === 'failed';
+
+          container.innerHTML = `
+            <div class="space-y-4">
+              <div>
+                <div class="flex justify-between text-xs mb-1.5">
+                  <span class="text-slate-400 uppercase font-semibold">Status: <span class="${isDone ? 'text-emerald-400' : isFailed ? 'text-rose-400' : 'text-indigo-400'}">${job.status}</span></span>
+                  <span class="text-indigo-400 font-semibold">${job.progress}%</span>
+                </div>
+                <div class="w-full bg-slate-900 rounded-full h-2.5 overflow-hidden border border-slate-800">
+                  <div className="bg-gradient-to-r from-indigo-500 to-pink-500 h-2.5 transition-all duration-500" style="width: ${job.progress}%; height: 100%; background: linear-gradient(90deg, #6366f1, #ec4899);"></div>
+                </div>
+              </div>
+
+              ${job.error ? `<div class="p-3 bg-rose-950/60 border border-rose-800 rounded-xl text-xs text-rose-300 font-mono">${job.error}</div>` : ''}
+
+              ${job.output_url ? `
+                <div class="pt-4 border-t border-slate-800">
+                  <a href="${job.output_url}" target="_blank" class="block w-full bg-emerald-600 hover:bg-emerald-500 text-center py-3 rounded-xl text-xs font-bold text-white transition shadow-lg">
+                    ⬇️ Download Result Video
+                  </a>
+                </div>
+              ` : ''}
+            </div>
+          `;
+
+          if (isDone || isFailed) {
+            clearInterval(pollInterval);
+            const submitBtn = document.getElementById('submit-btn');
+            submitBtn.disabled = false;
+            submitBtn.innerText = '🚀 Start Full Pipeline';
+          }
+        } catch (err) {
+          console.error(err);
+        }
+      };
+
+      updateStatus();
+      pollInterval = setInterval(updateStatus, 2000);
+    }
+
+    async function handleCreateApiKey() {
+      const name = document.getElementById('key-name-input').value;
+      if (!name) return;
+
+      try {
+        const res = await fetch('/api/v1/admin/keys', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name })
+        });
+        const data = await res.json();
+        document.getElementById('created-key-box').classList.remove('hidden');
+        document.getElementById('created-key-val').innerText = data.api_key;
+        document.getElementById('key-name-input').value = '';
+        fetchApiKeys();
+      } catch (err) {
+        alert('Failed to create key: ' + err.message);
+      }
+    }
+
+    async function fetchApiKeys() {
+      try {
+        const res = await fetch('/api/v1/admin/keys');
+        const data = await res.json();
+        const container = document.getElementById('keys-list');
+        if (Array.isArray(data) && data.length > 0) {
+          container.innerHTML = data.map(k => `
+            <div class="py-3 flex justify-between items-center text-xs">
+              <div>
+                <div class="font-semibold text-white">${k.name}</div>
+                <div class="text-slate-500 font-mono text-[10px]">${k.key_id}</div>
+              </div>
+              <span class="px-2 py-1 rounded ${k.is_active ? 'bg-emerald-900/60 text-emerald-300' : 'bg-rose-900/60 text-rose-300'}">
+                ${k.is_active ? 'Active' : 'Revoked'}
+              </span>
+            </div>
+          `).join('');
+        } else {
+          container.innerHTML = '<div class="py-4 text-xs text-slate-500">No API keys registered.</div>';
+        }
+      } catch (err) {
+        document.getElementById('keys-list').innerHTML = '<div class="py-4 text-xs text-rose-400">Failed to load keys.</div>';
+      }
+    }
+
+    // Initial render
+    renderSteps();
+  </script>
+</body>
+</html>

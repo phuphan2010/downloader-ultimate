@@ -17,8 +17,8 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root --without dev
 
-# Always upgrade yt-dlp to latest release to prevent extractor breakage
-RUN pip install -U yt-dlp
+# Always upgrade yt-dlp and install curl-cffi for browser impersonation (BUG-18)
+RUN pip install -U yt-dlp "curl-cffi>=0.7.0"
 
 # Copy application code
 COPY . .
