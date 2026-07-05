@@ -1,7 +1,7 @@
 """API v1 router — aggregates all endpoint routers."""
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import download, jobs, transcribe, translate, subtitle
+from app.api.v1.endpoints import download, jobs, transcribe, translate, subtitle, dub
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -10,3 +10,4 @@ api_router.include_router(jobs.router, prefix="/jobs", tags=["jobs"])
 api_router.include_router(transcribe.router, prefix="/transcribe", tags=["transcribe"])
 api_router.include_router(translate.router, prefix="/translate", tags=["translate"])
 api_router.include_router(subtitle.router, prefix="/subtitle", tags=["subtitle"])
+api_router.include_router(dub.router, prefix="/dub", tags=["dub"])
