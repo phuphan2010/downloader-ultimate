@@ -1,8 +1,8 @@
-"""Speech-to-Text service using OpenAI Whisper with SRT output generation."""
+"""Speech-to-Text service using faster-whisper with SRT output generation."""
 import asyncio
 from pathlib import Path
 from typing import Dict, Any, Tuple
-import whisper
+from faster_whisper import WhisperModel
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -20,7 +20,7 @@ def format_timestamp(seconds: float) -> str:
 
 
 class STTService:
-    """Whisper Speech-to-Text service."""
+    """Whisper Speech-to-Text service using faster-whisper."""
 
     def __init__(self):
         self.model = None
@@ -28,7 +28,9 @@ class STTService:
     def load_model(self):
         if self.model is None:
             logger.info("loading_whisper_model", size=settings.WHISPER_MODEL_SIZE)
-            self.model = whisper.load_model(settings.WHISPER_MODEL_SIZE, device=settings.WHISPER_DEVICE)
+            device = settings.WHISPER_DEVICE if settings.WHISPER_DEVICE in ["cpu", "cuda"] else "cpu"
+            compute_type = "int8" if device == "cpu" else "float16"
+            self.model = WhisperModel(settings.WHISPER_MODEL_SIZE, device=device, compute_type=compute_type)
 
     async def transcribe_audio(
         self, audio_path: Path, language: str = "auto"
@@ -64,7 +66,23 @@ class STTService:
         opts = {}
         if language and language != "auto":
             opts["language"] = language
-        return self.model.transcribe(str(audio_path), **opts)
+        segments_gen, info = self.model.transcribe(str(audio_path), **opts)
+
+        segments = []
+        text_parts = []
+        for seg in segments_gen:
+            text_parts.append(seg.text)
+            segments.append({
+                "start": seg.start,
+                "end": seg.end,
+                "text": seg.text
+            })
+
+        return {
+            "language": info.language,
+            "text": "".join(text_parts),
+            "segments": segments
+        }
 
 
 stt_service = STTService()
