@@ -6,8 +6,8 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Poetry
-RUN pip install poetry==1.8.3
+# Install Poetry and build dependencies
+RUN pip install "setuptools>=68.0" poetry==1.8.3
 
 WORKDIR /app
 

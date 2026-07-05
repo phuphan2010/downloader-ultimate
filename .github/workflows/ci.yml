@@ -94,3 +94,16 @@ jobs:
         with:
           file: ./backend/coverage.xml
           fail_ci_if_error: false
+
+  docker-build-check:
+    name: Verify Docker Compose Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Test docker compose build
+        run: docker compose build
+
