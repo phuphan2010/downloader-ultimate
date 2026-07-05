@@ -62,6 +62,19 @@ class VideoDownloader:
             }
         }
 
+        # Check for cookies file (BUG-17 Fix)
+        cookie_candidates = [
+            Path(settings.COOKIES_FILE),
+            Path("/app/cookies/douyin_cookies.txt"),
+            Path("/app/cookies/cookies.txt"),
+            Path("/data/cookies.txt"),
+            Path("/data/douyin_cookies.txt"),
+        ]
+        cookie_file = next((p for p in cookie_candidates if p.exists()), None)
+        if cookie_file:
+            ydl_opts["cookiefile"] = str(cookie_file)
+            logger.info("using_cookie_file", file=str(cookie_file))
+
         # Attempt download with backoff retry
         last_exception = None
         for attempt in range(1, settings.DOWNLOAD_RETRY_COUNT + 1):

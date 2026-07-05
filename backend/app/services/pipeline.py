@@ -22,7 +22,7 @@ logger = get_logger(__name__)
 
 async def trigger_webhook_callback(webhook_url: str, payload: Dict[str, Any], max_retries: int = 3):
     """Send HTTP POST callback to webhook URL with exponential backoff retry."""
-    async with httpx.AsyncClient(timeout=15.0) as client:
+    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         for attempt in range(1, max_retries + 1):
             try:
                 logger.info("sending_webhook_callback", url=webhook_url, attempt=attempt)

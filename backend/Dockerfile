@@ -17,11 +17,14 @@ COPY pyproject.toml poetry.lock* ./
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root --without dev
 
+# Always upgrade yt-dlp to latest release to prevent extractor breakage
+RUN pip install -U yt-dlp
+
 # Copy application code
 COPY . .
 
-# Create data directory
-RUN mkdir -p /data/jobs
+# Create data and cookies directory
+RUN mkdir -p /data/jobs /app/cookies
 
 EXPOSE 8000
 

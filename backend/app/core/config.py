@@ -38,6 +38,7 @@ class Settings(BaseSettings):
     MAX_VIDEO_SIZE_MB: int = 100
     DOWNLOAD_TIMEOUT_SEC: int = 300
     DOWNLOAD_RETRY_COUNT: int = 3
+    COOKIES_FILE: str = "/app/cookies/cookies.txt"
 
     # STT (Whisper)
     WHISPER_MODEL_SIZE: str = "base"  # tiny | base | small | medium | large
