@@ -3,7 +3,6 @@ name = "downloader-ultimate"
 version = "0.1.0"
 description = "Video Downloader & Dubbing Tool API"
 authors = ["phuphan2010"]
-python = "^3.11"
 
 [tool.poetry.dependencies]
 python = "^3.11"
@@ -15,7 +14,7 @@ celery = {extras = ["redis"], version = "^5.4.0"}
 redis = "^5.0.0"
 yt-dlp = "^2024.5.27"
 openai-whisper = "^20231117"
-googletrans = "4.0.0rc1"
+deep-translator = "^1.11.4"
 deepl = "^1.18.0"
 gTTS = "^2.5.1"
 boto3 = "^1.34.0"

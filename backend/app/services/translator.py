@@ -2,7 +2,7 @@
 import hashlib
 import re
 from typing import Dict, List, Tuple
-from googletrans import Translator as GoogleTranslator
+from deep_translator import GoogleTranslator
 import deepl
 
 from app.core.config import settings
@@ -38,16 +38,12 @@ def build_srt(segments: List[Dict[str, str]]) -> str:
 def convert_srt_to_vtt(srt_content: str) -> str:
     """Convert SRT format to WebVTT format for web HTML5 video players."""
     vtt = "WEBVTT\n\n"
-    # Replace comma milliseconds with period in timestamps
     srt_converted = re.sub(r"(\d\d:\d\d:\d\d),(\d\d\d)", r"\1.\2", srt_content)
     return vtt + srt_converted
 
 
 class TranslationService:
-    """Translation orchestrator."""
-
-    def __init__(self):
-        self.google_translator = GoogleTranslator()
+    """Translation orchestrator using deep-translator and DeepL."""
 
     def translate_text(self, text: str, target_lang: str = "vi", provider: str = settings.TRANSLATE_PROVIDER) -> str:
         """Translate text with hash caching."""
@@ -74,16 +70,13 @@ class TranslationService:
         translation_cache[cache_key] = translated
         return translated
 
-    def _google_translate(self, text: str, target_lang: str) -> str:
-        res = self.google_translator.translate(text, dest=target_lang)
-        return res.text
+    @staticmethod
+    def _google_translate(text: str, target_lang: str) -> str:
+        translator = GoogleTranslator(source="auto", target=target_lang)
+        return translator.translate(text)
 
     def translate_srt(self, srt_content: str, target_lang: str = "vi", provider: str = settings.TRANSLATE_PROVIDER) -> Tuple[str, str]:
-        """Translate all segments in SRT file while keeping original timestamps.
-
-        Returns:
-            Tuple[translated_srt_content, translated_vtt_content]
-        """
+        """Translate all segments in SRT file while keeping original timestamps."""
         segments = parse_srt(srt_content)
         translated_segments = []
 
