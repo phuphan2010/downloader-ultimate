@@ -41,7 +41,7 @@ class Settings(BaseSettings):
     PROXY_URL: str = ""  # e.g. "http://proxy.example.com:8080"
     DOUYIN_API_SERVICE_URL: str = "http://192.168.1.200:8000"  # Host proxy IP or service URL
     DOUYIN_API_KEY: str = ""  # API key for douyin_tiktok_api proxy
-    DOUYIN_API_DOWNLOAD_ENDPOINT: str = "/api/v1/download"  # Configurable fallback endpoint
+    DOUYIN_API_DOWNLOAD_ENDPOINT: str = "/api/hybrid/video_data"  # Official endpoint for Douyin API V4
 
     # STT (Whisper)
     WHISPER_MODEL_SIZE: str = "base"  # tiny | base | small | medium | large

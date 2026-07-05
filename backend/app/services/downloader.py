@@ -1,4 +1,4 @@
-"""yt-dlp Service wrapper with temporary writable cookie copy and Douyin GET JSON API fallback (BUG-22, BUG-17C Fix)."""
+"""yt-dlp Service wrapper with temporary writable cookie copy and Douyin Hybrid API fallback (BUG-17D Fix)."""
 import asyncio
 import re
 import shutil
@@ -128,7 +128,7 @@ class VideoDownloader:
             if temp_cookie_path and temp_cookie_path.exists():
                 temp_cookie_path.unlink(missing_ok=True)
 
-        # Douyin API Service fallback if yt-dlp fails (BUG-17C Fix)
+        # Douyin API Service fallback if yt-dlp fails (BUG-17D Fix)
         if platform == PlatformType.DOUYIN and settings.DOUYIN_API_SERVICE_URL:
             try:
                 logger.info("attempting_douyin_api_service_fallback", job_id=job_id)
@@ -147,7 +147,7 @@ class VideoDownloader:
             ydl.download([url])
 
     async def _download_via_douyin_api(self, url: str, job_folder: Path) -> Path:
-        """Fallback method sending GET request with ?url= query parameter to douyin_tiktok_api service (BUG-17C Fix)."""
+        """Fallback method using official Evil0ctal/Douyin_TikTok_Download_API endpoints (BUG-17D Fix)."""
         headers = {}
         if settings.DOUYIN_API_KEY:
             headers["X-API-Key"] = settings.DOUYIN_API_KEY
@@ -155,39 +155,42 @@ class VideoDownloader:
         base_url = settings.DOUYIN_API_SERVICE_URL.rstrip('/')
 
         async with httpx.AsyncClient(timeout=60.0, headers=headers, follow_redirects=True) as client:
-            logger.info("douyin_api_get_request", base_url=base_url, target_url=url)
-            resp = await client.get(base_url, params={"url": url})
-            if resp.status_code != 200:
-                raise RuntimeError(f"Douyin API service returned HTTP {resp.status_code}: {resp.text[:200]}")
+            # Option A: Call /api/hybrid/video_data endpoint for JSON metadata
+            hybrid_endpoint = f"{base_url}/api/hybrid/video_data"
+            try:
+                logger.info("douyin_hybrid_api_request", endpoint=hybrid_endpoint, target_url=url)
+                resp = await client.get(hybrid_endpoint, params={"url": url, "minimal": "true"})
+                if resp.status_code == 200:
+                    data = resp.json()
+                    d = data.get("data", {}) if isinstance(data, dict) else {}
 
-            data = resp.json()
-            logger.info("douyin_api_json_response_received", keys=list(data.keys()) if isinstance(data, dict) else "not_dict")
-
-            # Extract video URL from JSON response dynamically
-            video_url = None
-            if isinstance(data, dict):
-                # Try direct keys
-                for k in ["video_url", "download_url", "url", "nwm_url", "play_addr"]:
-                    if data.get(k) and isinstance(data[k], str) and data[k].startswith("http"):
-                        video_url = data[k]
-                        break
-
-                # Try nested data keys if not found
-                if not video_url and isinstance(data.get("data"), dict):
-                    nested = data["data"]
-                    for k in ["video_url", "download_url", "url", "nwm_url", "play_addr"]:
-                        if nested.get(k) and isinstance(nested[k], str) and nested[k].startswith("http"):
-                            video_url = nested[k]
+                    video_url = None
+                    for k in ["nwm_video_url_HQ", "nwm_video_url", "video_url", "play_addr"]:
+                        v = d.get(k) or (data.get(k) if isinstance(data, dict) else None)
+                        if v and isinstance(v, str) and v.startswith("http"):
+                            video_url = v
                             break
 
-            if not video_url:
-                raise RuntimeError(f"Could not extract video_url from Douyin API JSON response: {data}")
+                    if video_url:
+                        logger.info("downloading_binary_from_hybrid_parsed_url", video_url=video_url)
+                        video_resp = await client.get(video_url)
+                        if video_resp.status_code == 200 and len(video_resp.content) > 1024:
+                            target_file = job_folder / "input_video.mp4"
+                            target_file.write_bytes(video_resp.content)
+                            return target_file
+            except Exception as e:
+                logger.warning("douyin_hybrid_api_failed_trying_direct_download", error=str(e))
 
-            logger.info("downloading_binary_from_parsed_url", video_url=video_url)
-            video_resp = await client.get(video_url)
-            if video_resp.status_code == 200 and len(video_resp.content) > 1024:
-                target_file = job_folder / "input_video.mp4"
-                target_file.write_bytes(video_resp.content)
-                return target_file
+            # Option B: Direct download endpoint /api/download
+            direct_endpoint = f"{base_url}/api/download"
+            try:
+                logger.info("douyin_direct_api_request", endpoint=direct_endpoint, target_url=url)
+                resp = await client.get(direct_endpoint, params={"url": url, "with_watermark": "false"})
+                if resp.status_code == 200 and len(resp.content) > 1024:
+                    target_file = job_folder / "input_video.mp4"
+                    target_file.write_bytes(resp.content)
+                    return target_file
+            except Exception as e:
+                logger.warning("douyin_direct_api_failed", error=str(e))
 
-            raise RuntimeError(f"Failed to fetch binary video from parsed URL: status {video_resp.status_code}")
+            raise RuntimeError(f"Douyin API fallback failed on endpoints {hybrid_endpoint} and {direct_endpoint}")
