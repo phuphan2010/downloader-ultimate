@@ -1,9 +1,10 @@
-"""yt-dlp Service wrapper with ImpersonateTarget object fix and Douyin API fallback (BUG-21, BUG-17 Fix)."""
+"""yt-dlp Service wrapper with temporary writable cookie copy and flexible Douyin API fallback (BUG-22, BUG-17C Fix)."""
 import asyncio
 import re
 import shutil
+import tempfile
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 import yt_dlp
 import httpx
 
@@ -13,7 +14,7 @@ from app.models.download import PlatformType, VideoQuality
 
 logger = get_logger(__name__)
 
-# Try importing ImpersonateTarget for yt-dlp Python API (BUG-21 Fix)
+# ImpersonateTarget for yt-dlp Python API (BUG-21 Fix)
 try:
     from yt_dlp.networking.impersonate import ImpersonateTarget
     IMPERSONATE_CHROME = ImpersonateTarget("chrome")
@@ -64,19 +65,20 @@ class VideoDownloader:
             "quiet": False,
             "no_warnings": False,
             "ignoreerrors": False,
-            "impersonate": IMPERSONATE_CHROME,  # ImpersonateTarget object (BUG-21 Fix)
+            "impersonate": IMPERSONATE_CHROME,
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
             "http_headers": {
                 "Referer": "https://www.douyin.com/" if platform == PlatformType.DOUYIN else "https://www.tiktok.com/"
             }
         }
 
-        # Add Proxy configuration if set (BUG-18 Fix for Datacenter IP block)
+        # Proxy configuration (BUG-18 Fix)
         if settings.PROXY_URL:
             ydl_opts["proxy"] = settings.PROXY_URL
             logger.info("using_proxy_url", proxy=settings.PROXY_URL)
 
-        # Check for cookie candidates (BUG-17 Fix)
+        # Writable cookie file copy (BUG-22 Fix: avoids Read-only file system error)
+        temp_cookie_path: Optional[Path] = None
         cookie_candidates = [
             Path(settings.COOKIES_FILE),
             Path("/app/cookies/douyin_cookies.txt"),
@@ -86,36 +88,48 @@ class VideoDownloader:
         ]
         cookie_file = next((p for p in cookie_candidates if p.exists()), None)
         if cookie_file:
-            ydl_opts["cookiefile"] = str(cookie_file)
-            logger.info("using_cookie_file", file=str(cookie_file))
+            try:
+                # Create a temporary writable copy for yt-dlp to append Set-Cookies
+                tmp_fd, tmp_name = tempfile.mkstemp(suffix="_cookies.txt")
+                temp_cookie_path = Path(tmp_name)
+                with open(tmp_fd, "wb") as f_out, open(cookie_file, "rb") as f_in:
+                    f_out.write(f_in.read())
+                ydl_opts["cookiefile"] = str(temp_cookie_path)
+                logger.info("using_writable_temp_cookie_file", source=str(cookie_file), temp=str(temp_cookie_path))
+            except Exception as e:
+                logger.warning("copy_cookie_file_failed_using_original", error=str(e))
+                ydl_opts["cookiefile"] = str(cookie_file)
 
         # Attempt download with backoff retry
         last_exception_msg = ""
-        for attempt in range(1, settings.DOWNLOAD_RETRY_COUNT + 1):
-            try:
-                logger.info("download_attempt_start", job_id=job_id, attempt=attempt, platform=platform)
-                loop = asyncio.get_event_loop()
-                await loop.run_in_executor(None, self._exec_yt_dlp, ydl_opts, url)
+        try:
+            for attempt in range(1, settings.DOWNLOAD_RETRY_COUNT + 1):
+                try:
+                    logger.info("download_attempt_start", job_id=job_id, attempt=attempt, platform=platform)
+                    loop = asyncio.get_event_loop()
+                    await loop.run_in_executor(None, self._exec_yt_dlp, ydl_opts, url)
 
-                # Locate downloaded file
-                downloaded_files = list(job_folder.glob("input_video.*"))
-                if downloaded_files:
-                    target_file = downloaded_files[0]
-                    logger.info("download_success", job_id=job_id, file_path=str(target_file))
-                    return target_file
-                raise RuntimeError("File downloaded but not found in output folder.")
-            except Exception as e:
-                # Robust error message capture (BUG-20 Fix)
-                err_str = str(e).strip()
-                if not err_str:
-                    err_str = getattr(e, 'msg', '') or type(e).__name__
-                last_exception_msg = err_str
+                    # Locate downloaded file
+                    downloaded_files = list(job_folder.glob("input_video.*"))
+                    if downloaded_files:
+                        target_file = downloaded_files[0]
+                        logger.info("download_success", job_id=job_id, file_path=str(target_file))
+                        return target_file
+                    raise RuntimeError("File downloaded but not found in output folder.")
+                except Exception as e:
+                    err_str = str(e).strip()
+                    if not err_str:
+                        err_str = getattr(e, 'msg', '') or type(e).__name__
+                    last_exception_msg = err_str
 
-                logger.warning("download_attempt_failed", job_id=job_id, attempt=attempt, error=last_exception_msg)
-                if attempt < settings.DOWNLOAD_RETRY_COUNT:
-                    await asyncio.sleep(2 ** attempt)
+                    logger.warning("download_attempt_failed", job_id=job_id, attempt=attempt, error=last_exception_msg)
+                    if attempt < settings.DOWNLOAD_RETRY_COUNT:
+                        await asyncio.sleep(2 ** attempt)
+        finally:
+            if temp_cookie_path and temp_cookie_path.exists():
+                temp_cookie_path.unlink(missing_ok=True)
 
-        # Douyin API Service fallback if yt-dlp fails (BUG-17 Fallback)
+        # Douyin API Service fallback if yt-dlp fails (BUG-17C Fix)
         if platform == PlatformType.DOUYIN and settings.DOUYIN_API_SERVICE_URL:
             try:
                 logger.info("attempting_douyin_api_service_fallback", job_id=job_id)
@@ -134,16 +148,34 @@ class VideoDownloader:
             ydl.download([url])
 
     async def _download_via_douyin_api(self, url: str, job_folder: Path) -> Path:
-        """Fallback method to download Douyin video via douyin_tiktok_api service."""
+        """Fallback method trying flexible endpoints on douyin_tiktok_api service (BUG-17C Fix)."""
         headers = {}
         if settings.DOUYIN_API_KEY:
             headers["X-API-Key"] = settings.DOUYIN_API_KEY
 
-        async with httpx.AsyncClient(timeout=30.0, headers=headers) as client:
-            api_endpoint = f"{settings.DOUYIN_API_SERVICE_URL.rstrip('/')}/api/download"
-            resp = await client.post(api_endpoint, json={"url": url})
-            if resp.status_code == 200:
-                target_file = job_folder / "input_video.mp4"
-                target_file.write_bytes(resp.content)
-                return target_file
-            raise RuntimeError(f"Douyin API service returned HTTP {resp.status_code}")
+        base_url = settings.DOUYIN_API_SERVICE_URL.rstrip('/')
+        candidate_endpoints = [
+            settings.DOUYIN_API_DOWNLOAD_ENDPOINT,
+            "/api/v1/download",
+            "/api/download",
+            "/download",
+            "/api/video/download"
+        ]
+
+        async with httpx.AsyncClient(timeout=30.0, headers=headers, follow_redirects=True) as client:
+            last_err = ""
+            for ep in candidate_endpoints:
+                if not ep:
+                    continue
+                endpoint_url = f"{base_url}/{ep.lstrip('/')}"
+                try:
+                    resp = await client.post(endpoint_url, json={"url": url})
+                    if resp.status_code == 200 and len(resp.content) > 1024:
+                        target_file = job_folder / "input_video.mp4"
+                        target_file.write_bytes(resp.content)
+                        return target_file
+                    last_err = f"Endpoint {ep} status {resp.status_code}"
+                except Exception as e:
+                    last_err = f"Endpoint {ep} exception: {str(e)}"
+
+            raise RuntimeError(f"All Douyin API fallback endpoints failed: {last_err}")
