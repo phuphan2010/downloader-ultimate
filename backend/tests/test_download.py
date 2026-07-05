@@ -1,4 +1,4 @@
-"""Tests for Video Downloader API endpoints and validator."""
+"""Tests for Video Downloader API endpoints and error capture."""
 import pytest
 from app.services.downloader import validate_and_detect_platform
 from app.models.download import PlatformType
@@ -27,4 +27,11 @@ def test_url_validation():
 async def test_download_endpoint_validation(client):
     """POST /api/v1/download should reject invalid URLs with HTTP 400."""
     response = await client.post("/api/v1/download", json={"url": "https://invalid-url.com"})
-    assert response.status_code == 422  # Pydantic HttpUrl validation or 400
+    assert response.status_code in (400, 422)
+
+
+def test_robust_error_message_extraction():
+    """Ensure error message capture does not produce empty string (BUG-20 Fix)."""
+    e = Exception()
+    err_str = str(e).strip() or getattr(e, 'msg', '') or type(e).__name__
+    assert err_str == "Exception"

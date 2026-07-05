@@ -1,10 +1,11 @@
-"""yt-dlp Service wrapper with TikTok & Douyin no-watermark support and exponential backoff retry."""
+"""yt-dlp Service wrapper with TikTok & Douyin no-watermark support, proxy, and robust error logging (BUG-17, BUG-18, BUG-20 Fix)."""
 import asyncio
 import re
 import shutil
 from pathlib import Path
 from typing import Dict, Any, Tuple
 import yt_dlp
+import httpx
 
 from app.core.config import settings
 from app.core.logging import get_logger
@@ -40,7 +41,7 @@ class VideoDownloader:
             raise RuntimeError(f"Disk storage critical ({disk_percent:.1f}% used). Rejecting job.")
 
     async def download_video(self, url: str, job_id: str, quality: VideoQuality = VideoQuality.BEST) -> Path:
-        """Download video from TikTok/Douyin asynchronously with retry."""
+        """Download video from TikTok/Douyin asynchronously with retry & error capture."""
         self._check_disk_usage()
         is_valid, platform = validate_and_detect_platform(url)
         if not is_valid:
@@ -53,8 +54,8 @@ class VideoDownloader:
         ydl_opts: Dict[str, Any] = {
             "outtmpl": output_template,
             "format": "bestvideo+bestaudio/best" if quality == VideoQuality.BEST else f"best[height<={quality.value[:-1]}]/best",
-            "quiet": not settings.DEBUG,
-            "no_warnings": True,
+            "quiet": False,
+            "no_warnings": False,
             "ignoreerrors": False,
             "impersonate": "chrome",
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -63,7 +64,12 @@ class VideoDownloader:
             }
         }
 
-        # Check for cookies file (BUG-17 Fix)
+        # Add Proxy configuration if set (BUG-18 Fix for Datacenter IP block)
+        if settings.PROXY_URL:
+            ydl_opts["proxy"] = settings.PROXY_URL
+            logger.info("using_proxy_url", proxy=settings.PROXY_URL)
+
+        # Check for cookie candidates (BUG-17 Fix)
         cookie_candidates = [
             Path(settings.COOKIES_FILE),
             Path("/app/cookies/douyin_cookies.txt"),
@@ -77,7 +83,7 @@ class VideoDownloader:
             logger.info("using_cookie_file", file=str(cookie_file))
 
         # Attempt download with backoff retry
-        last_exception = None
+        last_exception_msg = ""
         for attempt in range(1, settings.DOWNLOAD_RETRY_COUNT + 1):
             try:
                 logger.info("download_attempt_start", job_id=job_id, attempt=attempt, platform=platform)
@@ -92,14 +98,41 @@ class VideoDownloader:
                     return target_file
                 raise RuntimeError("File downloaded but not found in output folder.")
             except Exception as e:
-                last_exception = e
-                logger.warning("download_attempt_failed", job_id=job_id, attempt=attempt, error=str(e))
+                # Robust error message capture (BUG-20 Fix)
+                err_str = str(e).strip()
+                if not err_str:
+                    err_str = getattr(e, 'msg', '') or type(e).__name__
+                last_exception_msg = err_str
+
+                logger.warning("download_attempt_failed", job_id=job_id, attempt=attempt, error=last_exception_msg)
                 if attempt < settings.DOWNLOAD_RETRY_COUNT:
                     await asyncio.sleep(2 ** attempt)
 
-        raise RuntimeError(f"Download failed after {settings.DOWNLOAD_RETRY_COUNT} attempts: {str(last_exception)}")
+        # Douyin API Service fallback if yt-dlp fails (BUG-17 Fallback)
+        if platform == PlatformType.DOUYIN and settings.DOUYIN_API_SERVICE_URL:
+            try:
+                logger.info("attempting_douyin_api_service_fallback", job_id=job_id)
+                fallback_file = await self._download_via_douyin_api(url, job_folder)
+                if fallback_file and fallback_file.exists():
+                    logger.info("douyin_fallback_success", job_id=job_id, file_path=str(fallback_file))
+                    return fallback_file
+            except Exception as fe:
+                logger.warning("douyin_fallback_failed", error=str(fe))
+
+        raise RuntimeError(f"Download failed after {settings.DOWNLOAD_RETRY_COUNT} attempts: {last_exception_msg}")
 
     @staticmethod
     def _exec_yt_dlp(opts: Dict[str, Any], url: str) -> None:
         with yt_dlp.YoutubeDL(opts) as ydl:
             ydl.download([url])
+
+    async def _download_via_douyin_api(self, url: str, job_folder: Path) -> Path:
+        """Fallback method to download Douyin video via douyin_tiktok_api service."""
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            api_endpoint = f"{settings.DOUYIN_API_SERVICE_URL.rstrip('/')}/api/download"
+            resp = await client.post(api_endpoint, json={"url": url})
+            if resp.status_code == 200:
+                target_file = job_folder / "input_video.mp4"
+                target_file.write_bytes(resp.content)
+                return target_file
+            raise RuntimeError(f"Douyin API service returned HTTP {resp.status_code}")

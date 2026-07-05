@@ -1,6 +1,5 @@
 """Application configuration using Pydantic Settings."""
 from typing import List
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -15,7 +14,7 @@ class Settings(BaseSettings):
     APP_ENV: str = "development"
     DEBUG: bool = False
     SECRET_KEY: str = "change-me-in-production"
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173", "*"]
 
     # Redis / Celery
     REDIS_URL: str = "redis://localhost:6379/0"
@@ -39,6 +38,8 @@ class Settings(BaseSettings):
     DOWNLOAD_TIMEOUT_SEC: int = 300
     DOWNLOAD_RETRY_COUNT: int = 3
     COOKIES_FILE: str = "/app/cookies/cookies.txt"
+    PROXY_URL: str = ""  # e.g. "http://proxy.example.com:8080" or "socks5://..."
+    DOUYIN_API_SERVICE_URL: str = "http://localhost:8000"  # Service douyin_tiktok_api proxy
 
     # STT (Whisper)
     WHISPER_MODEL_SIZE: str = "base"  # tiny | base | small | medium | large
