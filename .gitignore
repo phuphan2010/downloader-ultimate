@@ -1,8 +1,8 @@
-﻿# ============================================================
-# DOWNLOADER ULTIMATE -- Git Ignore
+# ============================================================
+# DOWNLOADER ULTIMATE — Git Ignore
 # ============================================================
 
-# Environment files -- NEVER commit secrets!
+# Environment files — NEVER commit secrets!
 .env
 .env.local
 .env.*.local
@@ -35,9 +35,6 @@ venv/
 env/
 ENV/
 .python-version
-
-# Poetry
-poetry.lock
 
 # pytest
 .pytest_cache/
